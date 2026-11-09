@@ -14,6 +14,7 @@ class Portero(unittest.TestCase):
     def test_contenido_de_las_tareas(self):
         for ruta in ("Web/noticias/2026/11/android-sms-muerte-bloqueo-movil/articulo.json",
                      "Web/noticias/2026/11/android-sms-muerte-bloqueo-movil/es.webp",
+                     "Web/noticias/2026/11/android-sms-muerte-bloqueo-movil/en-m.webp",
                      "Web/noticias/2026/11/android-sms-muerte-bloqueo-movil/fondo.jpg",
                      "Redes/textos/2026/11/2026-11-09.md", "Redes/candidatas/2026/11/2026-11-06.md",
                      "Resumenes/resumen-diario/datos/2026/2026-11-09.json", "Resumenes/resumen-diario/README.md",
@@ -30,6 +31,7 @@ class Portero(unittest.TestCase):
                      ".github/workflows/comprobar.yml", ".claude/skills/corregir/SKILL.md", "wrangler.jsonc",
                      "README.md", "tests/test_scripts.py", "Info/Plan/plan-maestro.md",
                      "Web/noticias/2026/11/un-articulo-cualquiera/index.html",
+                     "Web/noticias/2026/11/un-articulo-cualquiera/es-x.webp",
                      "Web/noticias/2026/11/un-articulo-cualquiera/articulo.json.py",
                      "Web/noticias/2026/11/../../scripts/construir.py",
                      "Web/noticias/2026/11/Un-Articulo/articulo.json",

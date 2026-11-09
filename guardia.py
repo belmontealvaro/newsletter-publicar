@@ -26,7 +26,7 @@ FECHA = r"\d{4}-\d{2}-\d{2}"
 # añade aquí su ruta.
 PERMITIDO = [re.compile(p) for p in (
     # Noticias del día: una carpeta por artículo, con estos archivos y ninguno más
-    r"Web/noticias/\d{4}/\d{2}/[a-z0-9]+(?:-[a-z0-9]+)*/(?:articulo\.json|imagen\.json|fondo\.jpg|(?:es|en)\.webp)",
+    r"Web/noticias/\d{4}/\d{2}/[a-z0-9]+(?:-[a-z0-9]+)*/(?:articulo\.json|imagen\.json|fondo\.jpg|(?:es|en)(?:-m)?\.webp)",
     rf"Redes/(?:textos|candidatas)/\d{{4}}/\d{{2}}/{FECHA}\.md",
     # Amanecer (resumen diario)
     rf"Resumenes/resumen-diario/datos/\d{{4}}/{FECHA}\.json",
