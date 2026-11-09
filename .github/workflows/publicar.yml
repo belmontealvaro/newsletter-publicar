@@ -1,0 +1,136 @@
+# Publica la web de belmontealvaro/newsletter en Cloudflare. Es el único sitio con la llave para publicar.
+# Cómo funciona y cómo se pone en marcha: README.md.
+
+name: Publicar la web
+
+on:
+  schedule:
+    # Horas en UTC. Cada 10 minutos mientras trabajan las tareas (05:00-08:00 de Madrid en invierno,
+    # 06:00-09:00 en verano) y una vez por hora el resto del día. GitHub puede retrasar estas horas unos minutos.
+    - cron: "*/10 4-6 * * *"
+    - cron: "17 0-3,7-23 * * *"
+  workflow_dispatch:
+    inputs:
+      aprobar:
+        description: "He revisado los cambios que no son contenido y quiero publicarlos"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # para apuntar en este repositorio cuál fue el último commit publicado
+  issues: write     # para avisar cuando algo se queda retenido
+
+concurrency:
+  group: publicar
+  cancel-in-progress: false
+
+env:
+  ORIGEN: belmontealvaro/newsletter
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Este repositorio (el portero y el apunte de lo último publicado)
+        uses: actions/checkout@v4
+        with:
+          path: portero
+
+      - name: La web (solo lectura)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ORIGEN }}
+          ref: main
+          token: ${{ secrets.NEWSLETTER_TOKEN }}
+          path: web
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Portero
+        id: portero
+        env:
+          APROBAR: ${{ inputs.aprobar }}
+        run: |
+          HEAD=$(git -C web rev-parse HEAD)
+          BASE=$(cat portero/ultimo-publicado 2>/dev/null | tr -d '[:space:]' || true)
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+          if [ "$HEAD" = "$BASE" ]; then
+            echo "Nada nuevo desde ${BASE:0:7}." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "accion=nada" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$APROBAR" = "true" ]; then
+            echo "Publicación de ${HEAD:0:7} aprobada a mano por @$GITHUB_ACTOR: no se pasa el portero." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "accion=publicar" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -z "$BASE" ] || ! git -C web cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "RETENIDO: todavía no hay ninguna publicación aprobada con la que comparar." > /tmp/portero.txt
+          elif (cd web && python3 ../portero/guardia.py "$BASE" "$HEAD") > /tmp/portero.txt; then
+            cat /tmp/portero.txt | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "accion=publicar" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          cat /tmp/portero.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "accion=retener" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar de que la publicación está retenida (una vez por commit)
+        if: steps.portero.outputs.accion == 'retener'
+        env:
+          HEAD: ${{ steps.portero.outputs.head }}
+        run: |
+          {
+            echo "La web **no se ha publicado**: en \`main\` de \`$ORIGEN\` ha entrado algo que no es contenido de las tareas automáticas."
+            echo
+            echo '```'
+            cat /tmp/portero.txt
+            echo '```'
+            echo
+            echo "Commit: https://github.com/$ORIGEN/commit/$HEAD"
+            echo
+            echo "Si el cambio es vuestro, revisadlo y pulsad **Actions > Publicar la web > Run workflow** marcando la casilla de aprobar. Si no lo reconocéis, no lo publiquéis: revertid el commit. Mientras tanto, las noticias nuevas tampoco se publican."
+          } > /tmp/aviso.md
+          abierta=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Publicación retenida in:title" --json number,body --jq '.[0] // empty')
+          if [ -z "$abierta" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Publicación retenida: hay cambios que revisar" --body-file /tmp/aviso.md
+          elif ! grep -q "$HEAD" <<< "$abierta" && ! gh issue view "$(jq -r .number <<< "$abierta")" --repo "$GITHUB_REPOSITORY" --comments | grep -q "$HEAD"; then
+            gh issue comment "$(jq -r .number <<< "$abierta")" --repo "$GITHUB_REPOSITORY" --body-file /tmp/aviso.md
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.portero.outputs.accion == 'publicar'
+        with:
+          python-version: "3.12"
+
+      - name: Pruebas, validadores y construcción de la web
+        if: steps.portero.outputs.accion == 'publicar'
+        working-directory: web
+        run: |
+          python3 -m unittest discover -s tests
+          python3 Web/scripts/noticias.py
+          python3 Resumenes/scripts/validar.py
+          python3 Web/scripts/construir.py
+          for f in dist/js/*.js; do node --check "$f"; done
+
+      - name: Publicar en Cloudflare
+        if: steps.portero.outputs.accion == 'publicar'
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy
+
+      - name: Apuntar lo publicado y cerrar el aviso
+        if: steps.portero.outputs.accion == 'publicar'
+        env:
+          HEAD: ${{ steps.portero.outputs.head }}
+        run: |
+          cd portero
+          echo "$HEAD" > ultimo-publicado
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ultimo-publicado
+          git commit -q -m "Publicado $ORIGEN@${HEAD:0:7}"
+          git push -q
+          echo "Publicado $ORIGEN@$HEAD." >> "$GITHUB_STEP_SUMMARY"
+          abierta=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Publicación retenida in:title" --json number --jq '.[0].number // ""')
+          if [ -n "$abierta" ]; then gh issue close "$abierta" --repo "$GITHUB_REPOSITORY" --comment "Publicado el commit $HEAD."; fi
