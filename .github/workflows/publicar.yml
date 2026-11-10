@@ -9,6 +9,10 @@ on:
     # 06:00-09:00 en verano) y una vez por hora el resto del día. GitHub puede retrasar estas horas unos minutos.
     - cron: "*/10 4-6 * * *"
     - cron: "17 0-3,7-23 * * *"
+    # Una pasada fija a las 06:15 de Madrid, justo después de las tareas de la mañana. GitHub solo entiende
+    # horas UTC: 05:15 UTC son las 06:15 en invierno y 04:15 UTC, las 06:15 en verano. La otra de las dos
+    # cae una hora antes o después; si no hay nada nuevo termina en segundos.
+    - cron: "15 4,5 * * *"
   workflow_dispatch:
     inputs:
       aprobar:
